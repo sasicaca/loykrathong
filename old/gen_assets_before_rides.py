@@ -1,0 +1,483 @@
+# -*- coding: utf-8 -*-
+"""สร้างชุดภาพของเกม (assets.js) — ตัวละคร chibi สไตล์ A ชุดไทยโบราณ + ของประกอบฉาก
+รัน:  python tools/gen_assets.py     (ได้ไฟล์ assets.js ที่โฟลเดอร์หลัก)
+ตัวละครแยกเป็น 2 ชั้น: ขา (ยืน/ก้าวซ้าย/ก้าวขวา) กับ ตัวท่อนบน (ตามมุมมองและท่า) เกมเอามาซ้อนกันแล้วขยับ
+"""
+import io, os, json, math, random
+
+OLC, OLW = '#33211f', 5.5
+SKIN, GOLD, SH = '#f7d3ae', '#f2c14e', '#1a0f33'
+
+def P(d, fill, sw=None, stroke=None, op=1):
+    w = OLW if sw is None else sw
+    st = f'stroke="{stroke or OLC}" stroke-width="{w}"' if w else 'stroke="none"'
+    return f'<path d="{d}" fill="{fill}" {st} opacity="{op}" stroke-linejoin="round" stroke-linecap="round"/>'
+def E(cx, cy, rx, ry, fill, sw=0, op=1):
+    st = f'stroke="{OLC}" stroke-width="{sw}"' if sw else 'stroke="none"'
+    return f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" fill="{fill}" {st} opacity="{op}"/>'
+def L(d, stroke=None, sw=None, op=1):
+    return f'<path d="{d}" fill="none" stroke="{stroke or OLC}" stroke-width="{sw or OLW}" opacity="{op}" stroke-linecap="round" stroke-linejoin="round"/>'
+def G(inner, x=0, y=0, s=1, flip=False, rot=0):
+    return f'<g transform="translate({x},{y}) rotate({rot}) scale({-s if flip else s},{s})">{inner}</g>'
+
+DEFS = '''<defs>
+<radialGradient id="glow"><stop offset="0" stop-color="#ffcf7a" stop-opacity=".6"/><stop offset="1" stop-color="#ffb04a" stop-opacity="0"/></radialGradient>
+<pattern id="pakama" width="14" height="14" patternUnits="userSpaceOnUse"><rect width="14" height="14" fill="#f4ead8"/><rect width="7" height="7" fill="#c9483a"/><rect x="7" y="7" width="7" height="7" fill="#c9483a"/><rect x="7" width="7" height="7" fill="#e79a8a"/><rect y="7" width="7" height="7" fill="#e79a8a"/></pattern>
+<pattern id="weave" width="14" height="12" patternUnits="userSpaceOnUse"><rect width="14" height="12" fill="#c98f55"/><path d="M0,3 H14 M0,9 H14" stroke="#8a5a30" stroke-width="1.6"/><path d="M4,0 V12 M11,0 V12" stroke="#e0b377" stroke-width="2" opacity=".7"/></pattern>
+</defs>'''
+
+# ================================================================ ตัวละคร
+HEAD = 'M-98,-205 C-101,-270 -52,-306 0,-306 C52,-306 101,-270 98,-205 C96,-150 54,-122 0,-122 C-54,-122 -96,-150 -98,-205Z'
+BODY = 'M-38,-116 C-47,-92 -49,-62 -43,-36 C-22,-27 22,-27 43,-36 C49,-62 47,-92 38,-116 C20,-124 -20,-124 -38,-116Z'
+CAP = 'M-102,-208 C-106,-276 -56,-314 0,-314 C56,-314 106,-276 102,-208 C100,-152 56,-122 0,-122 C-56,-122 -100,-152 -102,-208Z'
+
+def flower(col='#fff', mid='#ffc531'):
+    s = ''
+    for i in range(5): s += f'<g transform="rotate({i*72})">' + P('M0,0 C-9,-7 -9,-20 0,-24 C9,-20 9,-7 0,0Z', col, 2.5) + '</g>'
+    return s + E(0, 0, 6, 6, mid, 2.5)
+def krathong(lit=True, glowing=True):
+    s = E(0, -64, 30, 30, 'url(#glow)') if (lit and glowing) else ''
+    for i in range(-3, 4): s += P(f'M{i*13-9},-4 C{i*13-9},-20 {i*16},-30 {i*17},-34 C{i*16+3},-28 {i*13+9},-20 {i*13+9},-4Z', '#5cb85a', 3)
+    s += P('M-50,-6 C-50,14 50,14 50,-6 C30,2 -30,2 -50,-6Z', '#3f8f45', 3.5)
+    for x, c in ((-22, '#c95be0'), (0, '#ffb52e'), (22, '#ff8fb0')): s += E(x, -14, 8, 7, c, 2.5)
+    s += L('M-12,-18 L-15,-46 M12,-18 L15,-46', '#a8703c', 2.5) + P('M-4,-20 L-4,-46 L4,-46 L4,-20Z', '#fff6dc', 2.5)
+    if lit: s += P('M0,-46 C-7,-56 -3,-64 0,-70 C3,-64 7,-56 0,-46Z', '#ffb03a', 2, '#e07a1e') + E(-15, -48, 2.6, 2.6, '#ff7a3a') + E(15, -48, 2.6, 2.6, '#ff7a3a')
+    return s
+def face(expr):
+    ey = -196
+    s = E(-64, -176, 15, 9, '#ff9aa6', op=.7) + E(64, -176, 15, 9, '#ff9aa6', op=.7)
+    for ex in (-40, 40):
+        f = 1 if ex > 0 else -1
+        if expr in ('laugh', 'happy'): s += L(f'M{ex-12},{ey+4} Q{ex},{ey-12} {ex+12},{ey+4}')
+        elif expr == 'pray': s += L(f'M{ex-12},{ey-2} Q{ex},{ey+10} {ex+12},{ey-2}')
+        else: s += E(ex, ey, 8, 11.5, '#2a1a18') + E(ex - 2.4, ey - 4.5, 2.6, 3, '#fff')
+        if expr == 'smug': s += L(f'M{ex-13*f},{ey-22} L{ex+11*f},{ey-30}', sw=5)
+        elif expr in ('o', 'eat'): s += L(f'M{ex-12},{ey-30} Q{ex},{ey-38} {ex+12},{ey-30}', sw=5)
+        else: s += L(f'M{ex-11},{ey-27} Q{ex},{ey-32} {ex+11},{ey-27}', sw=5)
+    if expr == 'laugh': s += P('M-20,-173 Q0,-136 20,-173Z', '#c9483a') + E(0, -157, 9, 5, '#ff9a9a')
+    elif expr == 'o': s += E(0, -162, 7, 9, '#a8483a', 4)
+    elif expr == 'eat': s += E(0, -160, 11, 10, '#a8483a', 4)
+    elif expr == 'smug': s += L('M-16,-166 Q-8,-156 0,-166 Q8,-156 16,-166')
+    elif expr == 'pray': s += L('M-8,-166 Q0,-160 8,-166')
+    else: s += L('M-15,-169 Q0,-153 15,-169')
+    return s
+def stubble(full=False):
+    if full: return P(HEAD, '#4a3a3a', 0, op=.13)
+    return P('M-95,-216 C-97,-276 -52,-303 0,-303 C52,-303 97,-276 95,-216 C60,-236 -60,-236 -95,-216Z', '#4a3a3a', 0, op=.13)
+def hair_front(kind, c):
+    lw = OLW
+    if kind == 'mahadthai': return stubble() + P('M-64,-266 C-60,-314 60,-314 64,-266 C40,-258 -40,-258 -64,-266Z', c) + L('M-34,-292 C-16,-300 16,-300 34,-292', '#fff', 6, .2)
+    if kind == 'peek':
+        s = P('M-93,-230 C-91,-298 -44,-315 0,-315 C44,-315 91,-298 93,-230 C74,-254 34,-264 0,-262 C-34,-264 -74,-254 -93,-230Z', c)
+        for f in (-1, 1): s += P(f'M{91*f},-240 C{100*f},-224 {98*f},-200 {88*f},-184 C{84*f},-202 {84*f},-222 {81*f},-238Z', c, lw * .7)
+        return s + L('M-52,-288 C-26,-300 26,-300 52,-288', '#fff', 6, .2)
+    if kind == 'juk':
+        s = stubble() + E(0, -322, 25, 23, c, lw) + L('M-34,-330 L34,-316', GOLD, 5)
+        for i in range(7): s += E(-21 + i * 7, -302 - (3 - abs(i - 3)) * 1.4, 4.6, 4.6, '#fff', 1.6)
+        return s
+    if kind == 'queue': return P('M-86,-248 C-82,-306 82,-306 86,-248 C50,-262 -50,-262 -86,-248Z', '#2a2230') + L('M-84,-250 C-50,-264 50,-264 84,-250', '#c9483a', 4) + E(0, -305, 9, 8, '#c9483a', 3)
+    if kind in ('long', 'muay', 'braid'):
+        s = P('M-101,-212 C-105,-282 -54,-314 0,-314 C54,-314 105,-282 101,-212 C92,-238 58,-264 5,-272 L0,-262 L-5,-272 C-58,-264 -92,-238 -101,-212Z', c)
+        for f in (-1, 1): s += P(f'M{97*f},-236 C{106*f},-212 {104*f},-176 {92*f},-150 C{86*f},-176 {86*f},-210 {84*f},-236Z', c, lw * .7)
+        if kind == 'braid':
+            for i in range(5): s += E(86 - i * 4, -146 + i * 20, 13 - i * .8, 13, c, lw * .8)
+            s += P('M60,-58 L80,-66 L84,-46 L70,-50 L62,-40Z', '#e2574a', lw * .7)
+        return s + L('M-56,-288 C-30,-300 -10,-302 -4,-300 M56,-288 C30,-300 10,-302 4,-300', '#fff', 6, .2)
+    return stubble()
+def hair_back_view(kind, c):
+    shine = L('M-60,-282 C-30,-298 30,-298 60,-282', '#fff', 7, .2)
+    if kind == 'mahadthai': return stubble(True) + P('M-64,-262 C-60,-314 60,-314 64,-262 C40,-246 -40,-246 -64,-262Z', c)
+    if kind == 'peek': return P('M-97,-214 C-101,-290 -50,-315 0,-315 C50,-315 101,-290 97,-214 C82,-174 40,-158 0,-158 C-40,-158 -82,-174 -97,-214Z', c) + shine
+    if kind == 'juk':
+        s = stubble(True) + E(0, -322, 25, 23, c, OLW) + L('M-34,-316 L34,-330', GOLD, 5)
+        for i in range(7): s += E(-21 + i * 7, -302 - (3 - abs(i - 3)) * 1.4, 4.6, 4.6, '#fff', 1.6)
+        return s
+    if kind == 'queue':
+        s = P('M-11,-256 C-15,-200 -13,-140 -8,-92 L8,-92 C13,-140 15,-200 11,-256Z', '#2a1a18') + L('M-10,-210 L10,-206 M-10,-170 L10,-166 M-9,-130 L9,-126', '#555', 2)
+        return s + P('M-88,-236 C-84,-306 84,-306 88,-236 C50,-222 -50,-222 -88,-236Z', '#2a2230') + L('M-86,-238 C-50,-224 50,-224 86,-238', '#c9483a', 4) + E(0, -305, 9, 8, '#c9483a', 3)
+    if kind == 'long':
+        s = P('M-106,-220 C-112,-292 -56,-318 0,-318 C56,-318 112,-292 106,-220 C116,-150 110,-92 88,-58 C62,-46 -62,-46 -88,-58 C-110,-92 -116,-150 -106,-220Z', c)
+        return s + L('M-40,-250 C-46,-190 -48,-120 -40,-64 M0,-262 L0,-56 M40,-250 C46,-190 48,-120 40,-64', sw=2.2, op=.35) + shine
+    if kind == 'muay': return E(0, -324, 40, 30, c, OLW) + L('M-52,-318 L52,-336', GOLD, 6) + P(CAP, c) + shine
+    if kind == 'braid':
+        s = P(CAP, c)
+        for i in range(5): s += E(0, -128 + i * 19, 13 - i * .8, 13, c, OLW * .8)
+        return s + P('M-12,-40 L12,-40 L8,-22 L0,-30 L-8,-22Z', '#e2574a', OLW * .7) + shine
+    return stubble(True)
+def foot(x, y, bare):
+    d = f'M{x-17},{y-6} C{x-20},{y-17} {x+20},{y-17} {x+17},{y-6} C{x+20},{y+4} {x-20},{y+4} {x-17},{y-6}Z'
+    if bare: return P(d, SKIN) + L(f'M{x-5},{y} L{x-5},{y-5} M{x+4},{y} L{x+4},{y-5}', sw=2.2)
+    return P(d, '#3a2a2a')
+def arm_down(col): return P('M-36,-110 C-58,-106 -68,-86 -66,-66 C-64,-54 -48,-54 -46,-66 C-46,-80 -42,-90 -34,-94Z', col) + E(-56, -60, 11, 11, SKIN, OLW)
+def arm_up(col): return P('M-36,-110 C-60,-112 -78,-128 -80,-148 C-78,-160 -62,-158 -60,-148 C-58,-134 -48,-124 -34,-122Z', col) + E(-72, -154, 11, 11, SKIN, OLW)
+def arm_mid(col): return P('M-38,-108 C-54,-100 -54,-80 -40,-72 C-30,-68 -22,-76 -26,-84 C-30,-90 -32,-98 -30,-104Z', col) + E(-28, -76, 11, 11, SKIN, OLW)
+def arm_eat(col): return P('M-36,-110 C-58,-112 -70,-126 -66,-142 C-62,-152 -48,-150 -46,-142 C-46,-134 -42,-128 -34,-122Z', col) + E(-56, -148, 11, 11, SKIN, OLW)
+
+def legs(o, walk=0):
+    g = o.get; ex = g('ex', ()); bare = g('feet', 'bare') == 'bare'; longb = g('bottom') in ('nung', 'monk'); s = ''
+    for i, x in enumerate((-19, 19)):
+        up = walk == i + 1; lift = 11 if up else 0; dx = ((-5, 5)[i]) if up else 0
+        if not longb: s += P(f'M{x-11},-40 L{x-10+dx},{-10-lift} C{x-10+dx},{-3-lift} {x+10+dx},{-3-lift} {x+10+dx},{-10-lift} L{x+11},-40Z', '#fffaf2' if 'stocking' in ex else SKIN)
+        s += foot(x + dx, -lift, bare)
+        if 'anklet' in ex and not longb: s += L(f'M{x-10+dx},{-15-lift} L{x+10+dx},{-15-lift}', GOLD, 4.5)
+    return s
+def upper(o, view='f', pose='stand', expr=None):
+    g = o.get; ex = g('ex', ()); lw = OLW; back = view == 'b'; side = view == 's'
+    torso, bottom, bc, top, sc = g('torso', 'bare'), g('bottom', 'kraben'), g('bc', '#3f5a8a'), g('top', '#fff'), g('sc', GOLD)
+    hk, hc = g('hair'), g('hc', '#2e2422'); expr = expr or g('expr', 'smile'); s = ''
+    cloth_top = torso in ('jacket', 'chinese')
+    sl = top if cloth_top else SKIN; sr = '#e8912a' if torso == 'monk' else sl
+    if back: sl, sr = sr, sl
+    if not back:
+        if hk == 'queue': s += P('M56,-252 C92,-232 100,-170 86,-108 C82,-98 70,-102 72,-114 C82,-168 74,-222 48,-240Z', '#2a1a18') + L('M70,-200 L84,-196 M76,-170 L88,-166 M76,-140 L88,-136', '#555', 2)
+        if hk == 'long': s += P('M-106,-220 C-112,-292 -56,-318 0,-318 C56,-318 112,-292 106,-220 C116,-150 110,-92 88,-58 C62,-46 -62,-46 -88,-58 C-110,-92 -116,-150 -106,-220Z', hc) + L('M-70,-120 C-74,-100 -72,-80 -66,-64 M70,-120 C74,-100 72,-80 66,-64', sw=2.2, op=.35)
+        if hk == 'muay': s += E(0, -324, 40, 30, hc, lw) + L('M-52,-336 L52,-318', GOLD, 6) + E(54, -318, 6, 6, '#e2574a', 2.5)
+        if torso == 'sabai': s += P('M-40,-112 C-58,-100 -66,-64 -60,-30 L-45,-33 C-50,-64 -44,-92 -30,-106Z', sc)
+    elif pose in ('hold', 'wai'): s += arm_mid(sl) + G(arm_mid(sr), flip=True)
+    s += P(BODY, top if cloth_top else SKIN)
+    if not cloth_top and torso == 'bare' and not back: s += L('M-3,-52 Q0,-49 3,-52', sw=2.2, op=.6)
+    if torso in ('sabai', 'wrap'): s += P('M-46,-104 C-20,-96 20,-96 46,-104 L47,-70 C20,-62 -20,-62 -47,-70Z', top)
+    if bottom == 'kraben':
+        s += P('M-45,-70 C-55,-56 -57,-40 -51,-27 C-36,-21 -16,-23 -6,-29 L0,-41 L6,-29 C16,-23 36,-21 51,-27 C57,-40 55,-56 45,-70 C28,-63 -28,-63 -45,-70Z', bc)
+        s += P('M-8,-67 L8,-67 L5,-41 L0,-41 L-5,-41Z', '#fff', 0, op=.22) + L('M-24,-62 L-9,-34 M24,-62 L9,-34 M-36,-58 L-26,-32 M36,-58 L26,-32', sw=2, op=.4)
+    elif bottom == 'nung':
+        s += P('M-45,-70 C-53,-42 -54,-22 -50,-9 C-30,-2 30,-2 50,-9 C54,-22 53,-42 45,-70 C28,-63 -28,-63 -45,-70Z', bc)
+        if not back: s += P('M-11,-66 L11,-66 L14,-7 L-14,-7Z', '#fff', 0, op=.2) + L('M-4,-64 L-5,-8 M4,-64 L5,-8', sw=2, op=.45)
+        if 'hem' in ex: s += P('M-52,-22 C-30,-14 30,-14 52,-22 L50,-9 C30,-2 -30,-2 -50,-9Z', GOLD, lw * .7) + L('M-40,-13 L-34,-9 M-20,-10 L-14,-6 M0,-9 L6,-5 M20,-10 L26,-7', '#b9722a', 2)
+    elif bottom == 'pants':
+        s += P('M-45,-68 C-51,-40 -49,-22 -45,-12 C-30,-7 -12,-7 -4,-12 L0,-42 L4,-12 C12,-7 30,-7 45,-12 C49,-22 51,-40 45,-68 C28,-61 -28,-61 -45,-68Z', bc)
+    if cloth_top:
+        s += P('M-38,-116 C-47,-94 -49,-74 -47,-58 C-22,-50 22,-50 47,-58 C49,-74 47,-94 38,-116 C20,-124 -20,-124 -38,-116Z', top)
+        s += P('M-14,-125 L14,-125 L12,-112 L-12,-112Z', top, lw * .7)
+        if back: s += L('M0,-112 L0,-56', sw=2.2, op=.4)
+        elif torso == 'jacket': s += ''.join(E(0, y, 3.6, 3.6, GOLD, 2) for y in (-104, -92, -80, -68))
+        else: s += L('M0,-112 L0,-54', sw=2.2) + ''.join(L(f'M-9,{y} L9,{y}', '#f6e3b8', 4) + E(0, y, 3, 3, '#f6e3b8', 1.5) for y in (-100, -84, -68))
+    if torso == 'monk':
+        robe = P('M40,-114 C24,-124 6,-124 -8,-118 L-47,-72 C-54,-44 -54,-22 -50,-9 C-30,-2 30,-2 50,-9 C54,-30 53,-80 40,-114Z', '#e8912a')
+        robe += L('M-4,-114 C-20,-90 -30,-58 -34,-10 M12,-118 C2,-80 -6,-40 -8,-6 M30,-110 C26,-70 24,-30 24,-6', '#a85c12', 2.5, .7)
+        robe += P('M20,-121 C32,-121 40,-117 42,-110 L38,-58 L22,-58Z', '#d47a1a', lw * .7)
+        s += G(robe, flip=True) if back else robe
+    if torso == 'sabai':
+        d = P('M-38,-114 C-30,-121 -20,-123 -12,-122 L47,-76 L47,-58 L34,-58Z', sc)
+        if 'trim' in ex: d += L('M-30,-112 L40,-60 M-16,-120 L46,-70', '#fff6c8', 2.2, .9)
+        if back: d += P('M-40,-114 C-50,-90 -50,-60 -44,-36 L-28,-38 C-34,-62 -32,-90 -24,-112Z', sc)
+        s += G(d, flip=True) if back else d
+    if 'pakama' in ex: s += P('M-47,-76 C-20,-68 20,-68 47,-76 L47,-61 C20,-53 -20,-53 -47,-61Z', 'url(#pakama)', lw * .7) + (P('M28,-64 L46,-32 L32,-28 L22,-58Z', 'url(#pakama)', lw * .7) if not back else '')
+    if 'belt' in ex: s += P('M-47,-74 C-20,-66 20,-66 47,-74 L47,-63 C20,-55 -20,-55 -47,-63Z', GOLD, lw * .7) + (E(0, -61, 8, 7, '#fff3b0', 2.5) if not back else '')
+    if not back:
+        if 'necklace' in ex: s += L('M-24,-119 Q0,-94 24,-119', GOLD, 4.5) + E(0, -105, 5, 6, '#e2574a', 2)
+        if 'amulet' in ex: s += L('M-22,-119 Q0,-98 22,-119', '#8a5a34', 2.5) + P('M-6,-106 L6,-106 L4,-94 L-4,-94Z', GOLD, 2)
+    if 'hab' in ex:
+        s += L('M-118,-114 L118,-114', '#8a5a34', 9) + L('M-118,-114 L118,-114', '#c9965a', 3)
+        for x in (-108, 108):
+            s += L(f'M{x},-112 L{x-20},-44 M{x},-112 L{x+20},-44', sw=2.2)
+            s += E(x - 12, -50, 13, 10, '#f2c14e', 3) + E(x + 11, -52, 13, 10, '#6cc05a', 3) + E(x, -60, 10, 9, '#ff8fb0', 3)
+            s += P(f'M{x-32},-44 L{x+32},-44 L{x+24},-6 C{x+10},0 {x-10},0 {x-24},-6Z', 'url(#weave)')
+    if pose in ('hold', 'wai'):
+        if not back:
+            s += arm_mid(sl) + G(arm_mid(sr), flip=True)
+            if pose == 'wai': s += P('M-7,-78 C-9,-96 -3,-108 0,-112 C3,-108 9,-96 7,-78Z', SKIN)
+    elif pose == 'up': s += arm_down(sl) + G(arm_up(sr), flip=True)
+    elif pose == 'eat': s += arm_down(sl) + G(arm_eat(sr), flip=True)
+    else: s += arm_down(sl) + G(arm_down(sr), flip=True)
+    if 'bangle' in ex and pose == 'stand': s += L('M-66,-70 L-48,-72 M66,-70 L48,-72', GOLD, 4.5)
+    s += E(-98, -198, 10, 13, SKIN, lw) + ('' if side else E(98, -198, 10, 13, SKIN, lw))
+    s += P(HEAD, SKIN)
+    if back: s += hair_back_view(hk, hc)
+    else:
+        s += G(face(expr), 16 if side else 0) + hair_front(hk, hc)
+        if 'flower' in ex: s += G(flower(), -92, -238, .8)
+        if 'earring' in ex: s += E(-98, -180, 5, 6, GOLD, 2) + ('' if side else E(98, -180, 5, 6, GOLD, 2))
+    return s
+
+CAST = [
+    dict(name='ขุนนาง', hair='mahadthai', torso='jacket', top='#fffaf2', bottom='kraben', bc='#7a4a9a', feet='shoes', ex=('stocking',), expr='smug'),
+    dict(name='คุณหญิง', hair='peek', torso='sabai', top='#f6e3b8', sc='#e2a93a', bottom='nung', bc='#9a3a5a', ex=('trim', 'hem', 'necklace', 'belt', 'bangle', 'flower', 'earring')),
+    dict(name='ชาวบ้านชาย', hair='mahadthai', torso='bare', bottom='kraben', bc='#3f5a8a', ex=('pakama',)),
+    dict(name='แม่ค้าหาบเร่', hair='peek', torso='wrap', top='#c9685a', bottom='nung', bc='#4a4a6a', ex=('hab',), expr='happy'),
+    dict(name='เด็กชายไว้จุก', hair='juk', torso='bare', bottom='kraben', bc='#c9483a', ex=('amulet', 'anklet')),
+    dict(name='เด็กหญิงไว้จุก', hair='juk', torso='wrap', top='#ffb7c5', bottom='nung', bc='#6aa86f', ex=('bangle',)),
+    dict(name='พระสงฆ์', hair='shaved', torso='monk', bottom='monk', expr='pray', monk=True),
+    dict(name='พ่อค้าจีน', hair='queue', torso='chinese', top='#4a6a9a', bottom='pants', bc='#2a2a3a', feet='shoes'),
+    dict(name='หญิงสาวผมยาว', hair='long', hc='#3a2622', torso='sabai', top='#f4ead8', sc='#f08aa8', bottom='nung', bc='#5a7ab0', ex=('flower', 'bangle')),
+    dict(name='แม่หญิงเกล้ามวย', hair='muay', hc='#2e2422', torso='sabai', top='#f6e3b8', sc='#6cc0b4', bottom='nung', bc='#7a3a4a', ex=('hem', 'earring')),
+    dict(name='สาวผมเปีย', hair='braid', hc='#4a2c1a', torso='wrap', top='#f2c14e', bottom='nung', bc='#6a4a8a', ex=('bangle',)),
+    # แม่ค้าประจำร้าน (ไม่มีหาบ)
+    dict(name='แม่ค้า', hair='peek', torso='wrap', top='#c9685a', bottom='nung', bc='#4a4a6a', expr='happy', vendor=True),
+    dict(name='พ่อค้า', hair='mahadthai', torso='bare', bottom='kraben', bc='#6a5a3a', ex=('pakama',), expr='happy', vendor=True),
+]
+
+# ================================================================ ของประกอบฉาก
+def blob(cx, cy, rx, ry, n, seed, jit=.1, bump=.42):
+    r = random.Random(seed); pts = []
+    for i in range(n):
+        a = 2 * math.pi * i / n + r.uniform(-.1, .1); k = 1 + r.uniform(-jit, jit)
+        pts.append((cx + math.cos(a) * rx * k, cy + math.sin(a) * ry * k))
+    d = f'M{pts[0][0]:.1f},{pts[0][1]:.1f}'
+    for i in range(n):
+        p, q = pts[i], pts[(i + 1) % n]; mx, my = (p[0] + q[0]) / 2, (p[1] + q[1]) / 2
+        dx, dy = mx - cx, my - cy; ln = math.hypot(dx, dy) or 1; seg = math.hypot(q[0] - p[0], q[1] - p[1])
+        d += f' Q{mx + dx / ln * seg * bump:.1f},{my + dy / ln * seg * bump:.1f} {q[0]:.1f},{q[1]:.1f}'
+    return d + 'Z'
+def lantern():
+    s = L('M0,-18 L0,0', sw=3) + P('M-14,0 C-26,10 -26,42 -14,52 L14,52 C26,42 26,10 14,0Z', '#ffd27a')
+    s += L('M-5,2 C-12,16 -12,36 -5,50 M5,2 C12,16 12,36 5,50', '#e09a3a', 2.5)
+    s += P('M-13,-5 L13,-5 L14,2 L-14,2Z', '#c9483a', 3.5) + P('M-14,50 L14,50 L13,57 L-13,57Z', '#c9483a', 3.5) + P('M-4,57 L4,57 L3,76 L0,71 L-3,76Z', '#e2574a', 3)
+    return s
+def bamboo(x, y0, y1, w=12):
+    s = P(f'M{x-w/2},{y0} L{x-w/2},{y1} L{x+w/2},{y1} L{x+w/2},{y0}Z', '#d9b25e', 4)
+    for yy in range(int(y0) + 40, int(y1), 56): s += L(f'M{x-w/2},{yy} L{x+w/2},{yy}', sw=2.5)
+    return s
+def thatch(x0, x1, yt, yb, inset=34):
+    d = f'M{x0+inset},{yt} L{x1-inset},{yt} L{x1},{yb}'; n = int((x1 - x0) / 40)
+    for i in range(n):
+        xa = x1 - (i + .5) * (x1 - x0) / n; xb = x1 - (i + 1) * (x1 - x0) / n
+        d += f' L{xa:.0f},{yb+18} L{xb:.0f},{yb}'
+    s = P(d + 'Z', '#cfa64e')
+    for i in range(1, n * 2):
+        x = x0 + i * (x1 - x0) / (n * 2); xt = x0 + inset + i * (x1 - x0 - inset * 2) / (n * 2)
+        s += L(f'M{xt:.0f},{yt+10} L{x:.0f},{yb-6}', '#8a6a2a', 2.2, .55)
+    return s + L(f'M{x0+inset-10},{yt} L{x1-inset+10},{yt}', '#8a6a2a', 10) + L(f'M{x0+inset-10},{yt} L{x1-inset+10},{yt}', '#b98a3a', 4)
+def jar():
+    return (P('M-40,-6 C-62,-40 -54,-86 -28,-98 L28,-98 C54,-86 62,-40 40,-6 C20,3 -20,3 -40,-6Z', '#b5683a') + P('M22,-92 C44,-80 50,-44 36,-12 C30,-40 30,-70 22,-92Z', '#8a4a28', 0, op=.5)
+            + E(0, -98, 30, 8, '#7a3f22', 4) + L('M-30,-70 C-38,-54 -38,-36 -32,-22', '#e0a070', 4, .7))
+def stall_back(): return bamboo(-164, -250, 0) + bamboo(164, -250, 0) + P('M-170,-250 L170,-250 L170,-118 L-170,-118Z', '#4a2f24', 0, op=.6)
+def stall_front(kind):
+    s = ''
+    for x in (-178, 178): s += P(f'M{x-8},-72 L{x-8},0 L{x+8},0 L{x+8},-72Z', '#b98a4a', 4)
+    s += P('M-192,-128 L192,-128 L204,-98 L-204,-98Z', '#e6be7a') + P('M-204,-98 L204,-98 L200,-70 L-200,-70Z', '#c99a54')
+    for x in range(-176, 177, 32): s += L(f'M{x},-95 L{x},-73', sw=2.2, op=.5)
+    if kind == 'kanom':
+        for i, x in enumerate((-124, 0, 124)):
+            s += E(x, -118, 52, 15, '#d9a85a', 4) + E(x, -120, 42, 10, '#3f8f45')
+            for k in range(5): s += E(x - 28 + k * 14, -122 - (k % 2) * 3, 7, 6, ['#ffb3c7', '#fff3b0', '#b8e986', '#ffd59e', '#ffffff'][(k + i) % 5], 2.5)
+    elif kind == 'krathong':
+        for x, f in ((-128, kr_leaf), (-44, kr_lotus), (44, kr_gold), (128, kr_coco)): s += G(f(), x, -112, .44)
+    elif kind == 'lantern':
+        for i, x in enumerate((-130, -44, 44, 130)): s += G(lantern(), x, -192, .78 if i % 2 else .7)
+    else:
+        s += G(jar(), -118, -112, .62) + G(jar(), -30, -112, .5)
+        for x in (60, 100, 140): s += P(f'M{x-12},-116 L{x-12},-152 L{x+12},-152 L{x+12},-116Z', '#8fbf6a', 4) + L(f'M{x-12},-134 L{x+12},-134', sw=2.2)
+    s += thatch(-232, 232, -348, -244) + P('M-156,-340 L156,-340 L156,-258 L-156,-258Z', '#8a5a34') + L('M-144,-328 L144,-328 L144,-270 L-144,-270Z', '#c9965a', 3)
+    for x in (-196, 196): s += G(lantern(), x, -222, .78)
+    return s
+def lot_empty():
+    s = P('M-150,-64 L150,-64 L176,-6 L-176,-6Z', 'url(#weave)', 4) + L('M-158,-46 L158,-46 M-166,-26 L166,-26', '#8a5a30', 2, .5)
+    for x in (-170, 170): s += bamboo(x, -150, -6, 10)
+    s += L('M-170,-140 C-80,-120 80,-120 170,-140', '#e8d9c0', 3) + P('M-110,-150 L110,-150 L110,-90 L-110,-90Z', '#b98852')
+    return s
+def tree_big(seed=1):
+    s = P('M-46,4 C-30,-30 -26,-90 -30,-150 C-50,-200 -84,-226 -110,-246 L-88,-264 C-60,-242 -34,-220 -16,-188 C-12,-228 -8,-268 -14,-316 L18,-316 C14,-258 16,-216 26,-178 C46,-214 72,-236 104,-250 L118,-230 C82,-212 54,-176 42,-136 C36,-86 40,-34 60,4 C40,-8 22,-10 10,4 C-6,-10 -28,-8 -46,4Z', '#8f6040')
+    s += P('M12,-168 C24,-120 24,-60 36,-8 C42,-36 36,-86 42,-136 C46,-152 50,-164 56,-176 C40,-178 24,-176 12,-168Z', '#5e3d26', 0, op=.45)
+    s += L('M-10,-30 C-8,-70 -6,-110 -10,-150 M22,-20 C20,-50 22,-80 20,-104', sw=2.5, op=.4)
+    for i, (cx, cy, rx, ry, n, c) in enumerate(((0, -350, 255, 150, 20, '#2f6b3f'), (-135, -312, 128, 88, 13, '#3a7d49'), (140, -318, 132, 90, 13, '#3a7d49'), (0, -430, 168, 98, 15, '#46935a'), (-62, -366, 100, 60, 11, '#58aa66'), (82, -378, 96, 58, 11, '#58aa66'))):
+        s += P(blob(cx, cy, rx, ry, n, seed * 17 + i), c, 5.5 if i == 0 else 4)
+    r = random.Random(seed)
+    for _ in range(26):
+        x, y = r.uniform(-200, 200), r.uniform(-450, -270); s += L(f'M{x:.0f},{y:.0f} q8,-9 16,0', '#235233' if r.random() < .5 else '#8fd07a', 3, .8)
+    s += L('M-150,-236 L-150,-196', sw=3) + G(lantern(), -150, -180, 1.1) + L('M130,-246 L130,-190', sw=3) + G(lantern(), 130, -174, 1.25)
+    return s
+def palm():
+    s = P('M-16,2 C-8,-80 -22,-170 8,-262 L32,-256 C8,-168 16,-80 18,2Z', '#a67a4e')
+    for i in range(7): y = -24 - i * 34; x = -12 + (i ** 1.6) * .9 - (4 if i < 3 else 0); s += L(f'M{x:.0f},{y} q14,-7 28,0', sw=2.5, op=.55)
+    for a in (-200, -172, -140, -105, -70, -38, -8, 22):
+        s += f'<g transform="translate(20,-262) rotate({a})">' + P('M0,0 C44,-34 118,-32 170,14 C116,-4 52,2 0,10Z', '#3f8f4a', 4.5) + L('M6,4 C54,-14 112,-12 160,10', '#235233', 2.5, .7) + '</g>'
+    for x, y in ((6, -250), (26, -244), (16, -262)): s += E(x, y, 13, 14, '#7a5236', 4)
+    return s
+def banana():
+    s = P('M-12,2 C-10,-40 -8,-70 -4,-96 L12,-96 C12,-70 12,-40 14,2Z', '#9cc77a', 4.5)
+    for a in (-158, -125, -92, -60, -28):
+        s += f'<g transform="translate(4,-92) rotate({a})">' + P('M0,0 C30,-44 118,-52 160,-8 C118,14 40,16 0,0Z', '#6cc05a', 4.5) + L('M4,-2 C54,-24 116,-24 156,-8', '#3f8f45', 3) + L('M50,-26 L56,-8 M90,-30 L96,-8 M124,-22 L128,-6', '#3f8f45', 2, .6) + '</g>'
+    return s
+def lamp_pole(): return bamboo(0, -250, 0) + L('M0,-238 L52,-238', '#8a5a34', 7) + G(lantern(), 52, -222, .95)
+def torch():
+    return (P('M-5,0 L-5,-140 L5,-140 L5,0Z', '#8a5a34', 4) + P('M-16,-158 L16,-158 L10,-136 L-10,-136Z', '#5a3a24', 4)
+            + P('M0,-150 C-24,-176 -10,-206 0,-228 C10,-206 24,-176 0,-150Z', '#ff9a2e', 4) + P('M0,-156 C-10,-172 -4,-190 0,-200 C4,-190 10,-172 0,-156Z', '#ffe08a', 0))
+def signpost():
+    s = P('M-8,0 L-8,-240 L8,-240 L8,0Z', '#8a5a34')
+    for y, f in ((-200, 1), (-126, -1)): s += f'<g transform="translate(0,{y})">' + P(f'M{-120*f},-31 L{120*f},-31 L{150*f},0 L{120*f},31 L{-120*f},31Z', '#b98852') + '</g>'
+    return s
+def gate():
+    s = bamboo(-150, -330, 0, 16) + bamboo(150, -330, 0, 16) + thatch(-200, 200, -392, -330, 30)
+    s += P('M-176,-334 L176,-334 L176,-254 L-176,-254Z', '#8a5a34') + L('M-164,-322 L164,-322 L164,-266 L-164,-266Z', '#c9965a', 3) + L('M-150,-240 C-60,-216 60,-216 150,-240', '#e8d9c0', 3)
+    for i, x in enumerate((-100, -50, 0, 50, 100)): s += G(lantern(), x, -204 - abs(i - 2) * -8, .6)
+    return s
+def fence():
+    s = L('M-160,-34 L160,-34 M-160,-12 L160,-12', '#b98a4a', 6)
+    for x in range(-150, 151, 30): s += P(f'M{x-5},0 L{x-5},-46 L{x},-56 L{x+5},-46 L{x+5},0Z', '#d9b25e', 3.5)
+    return s
+def it_kanom():
+    s = P('M-30,0 C-22,16 22,16 30,0 C20,-8 -20,-8 -30,0Z', '#4a9a4e', 3.5)
+    for x, c in ((-14, '#ffb3c7'), (0, '#fff3b0'), (14, '#b8e986')): s += E(x, -6, 8.5, 7.5, c, 3)
+    return s
+def it_drink(): return P('M-14,-42 L14,-42 L12,4 C6,8 -6,8 -12,4Z', '#8fbf6a', 3.5) + E(0, -42, 14, 5, '#f6e3b8', 3) + L('M-13,-18 L13,-18', sw=2.2)
+
+def circ(r, col, w): return f'<circle r="{r}" fill="none" stroke="{OLC}" stroke-width="{w+8}"/><circle r="{r}" fill="none" stroke="{col}" stroke-width="{w}"/>'
+def fw_base():
+    s = ''
+    for f in (-1, 1): s += P(f'M{-200*f},0 L{-164*f},0 L{12*f},-380 L{-12*f},-386Z', '#b0763e')
+    s += L('M-120,-130 L120,-130 M-70,-240 L70,-240', OLC, 16) + L('M-120,-130 L120,-130 M-70,-240 L70,-240', '#c9965a', 8)
+    s += P('M-216,-18 L216,-18 L226,0 L-226,0Z', '#d9a565') + P('M-150,-92 L150,-92 L150,-26 L-150,-26Z', '#8a5a34') + L('M-138,-80 L138,-80 L138,-38 L-138,-38Z', '#c9965a', 3)
+    return s
+def fw_wheel():
+    s = ''
+    for i in range(8):
+        a = i * math.pi / 4; x, y = math.cos(a) * 300, math.sin(a) * 300
+        s += L(f'M0,0 L{x:.0f},{y:.0f}', OLC, 13) + L(f'M0,0 L{x:.0f},{y:.0f}', '#d9b25e', 6)
+    s += circ(300, '#c9965a', 12) + circ(206, '#d9b25e', 7)
+    for i in range(24):
+        a = i * math.pi / 12 + .13; s += E(round(math.cos(a) * 300), round(math.sin(a) * 300), 10, 10, ['#ffe08a', '#ff8fab', '#8fd3ff', '#b8f29a'][i % 4], 3.5)
+    return s + E(0, 0, 36, 36, '#e2574a', OLW) + E(0, 0, 14, 14, GOLD, 4)
+def fw_cab(col):
+    s = L('M0,0 L-26,12 M0,0 L26,12', sw=3) + P('M-46,30 L46,30 L32,8 L-32,8Z', col) + L('M-32,30 L-32,62 M32,30 L32,62', sw=4)
+    s += E(-13, 52, 13, 12, SKIN, 3) + P('M-26,50 C-26,36 0,36 0,50 C-8,44 -18,44 -26,50Z', '#3a2622', 2.5) + E(15, 54, 12, 11, SKIN, 3) + P('M3,52 C3,40 27,40 27,52 C20,46 10,46 3,52Z', '#2e2422', 2.5)
+    return s + P('M-38,60 L38,60 L32,96 L-32,96Z', 'url(#weave)')
+def car_base():
+    s = E(0, 6, 236, 40, '#8a5a34', OLW) + E(0, -14, 236, 40, '#e0ad6c', OLW) + E(0, -14, 150, 24, '#c99a54')
+    s += P('M-18,-300 L18,-300 L18,-16 L-18,-16Z', '#fff1dc')
+    for y in range(-280, -30, 44): s += L(f'M-18,{y} L18,{y+26}', '#e2574a', 9)
+    return s
+def car_top():
+    s = ''; cols = ['#e2574a', '#fff1dc']
+    for i in range(8):
+        x0 = -244 + i * 61; s += P(f'M{x0},-250 L{x0+61},-250 L0,-410Z', cols[i % 2], 3.5)
+    s += L('M-244,-250 L0,-410 L244,-250', OLC, OLW)
+    for i in range(8):
+        x0 = -244 + i * 61; s += P(f'M{x0},-250 Q{x0+30.5},-206 {x0+61},-250Z', cols[(i + 1) % 2], 4) + E(x0 + 30.5, -222, 8, 8, '#ffe08a', 3)
+    return s + L('M0,-410 L0,-448', OLC, 5) + P('M0,-448 L34,-438 L0,-426Z', GOLD, 3.5)
+def horse(col, mane):
+    s = L('M0,-196 L0,44', OLC, 10) + L('M0,-196 L0,44', GOLD, 5)
+    s += P('M-50,-66 C-78,-72 -88,-44 -76,-22 C-66,-40 -58,-50 -46,-52Z', mane, 4)
+    for x in (-36, -16, 18, 38): s += P(f'M{x-8},-44 L{x-8},-8 L{x+8},-8 L{x+8},-44Z', col, 4) + P(f'M{x-9},-12 L{x+9},-12 L{x+9},-2 L{x-9},-2Z', '#5a3a24', 3.5)
+    s += E(0, -62, 54, 31, col, OLW) + P('M28,-76 C38,-112 52,-132 72,-134 C96,-132 104,-110 98,-94 C86,-90 78,-90 68,-82 C62,-68 50,-56 34,-50Z', col)
+    s += P('M62,-130 L66,-150 L78,-132Z', col, 4) + E(82, -114, 4.5, 5.5, '#2a1a18') + E(84, -100, 7, 4.5, '#ff9aa6', op=.7)
+    s += P('M32,-80 C34,-114 48,-134 64,-136 C52,-120 48,-100 46,-76Z', mane, 4) + P('M-24,-92 C-10,-100 14,-100 26,-92 L22,-66 C8,-60 -8,-60 -20,-66Z', '#e2574a', 4) + L('M-20,-78 L22,-78', GOLD, 3)
+    return s
+def bounce_back():
+    s = P('M-236,-64 L236,-64 L256,-8 L-256,-8Z', '#ffd166') + P('M-200,-64 L-200,-236 C-200,-256 200,-256 200,-236 L200,-64Z', '#8fd3ff')
+    for x in range(-160, 161, 40): s += L(f'M{x},-244 L{x},-68', '#5aa8dc', 2.5, .6)
+    for y in (-200, -150, -100): s += L(f'M-198,{y} L198,{y}', '#5aa8dc', 2.5, .6)
+    for x in (-204, 204):
+        s += P(f'M{x-36},-44 L{x-36},-276 C{x-36},-298 {x+36},-298 {x+36},-276 L{x+36},-44Z', '#ffd166')
+        for y in (-240, -170, -100): s += P(f'M{x-36},{y} L{x+36},{y} L{x+36},{y+26} L{x-36},{y+26}Z', '#e2574a', 3.5)
+        s += P(f'M{x-44},-288 L{x+44},-288 L{x},-372Z', '#7c6cf0')
+    return s + P('M-172,-254 C-100,-306 100,-306 172,-254 L172,-222 C100,-274 -100,-274 -172,-222Z', '#ff8fab')
+def bounce_front():
+    s = P('M-256,-44 C-256,-76 256,-76 256,-44 L256,-2 C256,14 -256,14 -256,-2Z', '#e2574a') + L('M-230,-48 C-120,-62 120,-62 230,-48', '#fff', 6, .3)
+    for x in (-240, 240):
+        s += P(f'M{x-28},0 L{x-28},-120 C{x-28},-140 {x+28},-140 {x+28},-120 L{x+28},0Z', '#ffd166') + P(f'M{x-28},-80 L{x+28},-80 L{x+28},-58 L{x-28},-58Z', '#e2574a', 3.5) + P(f'M{x-34},-130 L{x+34},-130 L{x},-190Z', '#7c6cf0')
+    return s
+def sala():
+    s = P('M-172,-42 L172,-42 L184,0 L-184,0Z', '#b0763e') + L('M-176,-20 L176,-20', sw=2.5, op=.5)
+    for x in (-150, -50, 50, 150): s += P(f'M{x-8},-196 L{x-8},-42 L{x+8},-42 L{x+8},-196Z', '#8a5a34', 4)
+    s += L('M-158,-92 L158,-92', OLC, 12) + L('M-158,-92 L158,-92', '#b0763e', 6)
+    s += P('M-200,-190 C-124,-204 -42,-276 0,-360 C42,-276 124,-204 200,-190Z', '#c9563e')
+    s += P('M-150,-196 C-100,-208 -34,-266 0,-326 C34,-266 100,-208 150,-196Z', '#f6e3b8', 4) + E(0, -236, 18, 18, '#c9563e', 4)
+    s += L('M0,-360 C2,-380 12,-390 24,-394', GOLD, 7) + L('M-200,-190 C-214,-192 -222,-202 -224,-212', GOLD, 7) + L('M200,-190 C214,-192 222,-202 224,-212', GOLD, 7)
+    return s + G(lantern(), -100, -176, .7) + G(lantern(), 100, -176, .7)
+def urn():
+    s = P('M-30,0 L-22,-34 L22,-34 L30,0Z', '#6a4a2a') + P('M-58,-34 C-70,-70 -62,-104 -44,-112 L44,-112 C62,-104 70,-70 58,-34 C30,-26 -30,-26 -58,-34Z', '#b98a3a')
+    s += P('M26,-108 C50,-98 58,-70 48,-40 C42,-62 40,-86 26,-108Z', '#8a6222', 0, op=.5) + E(0, -112, 46, 11, '#d9cdb8', 4) + L('M-50,-74 C-20,-66 20,-66 50,-74', GOLD, 4)
+    for i, x in enumerate((-26, -14, -3, 8, 19, 29)):
+        tx = x + (i - 2.5) * 5; s += L(f'M{x},-112 L{tx:.0f},-190', '#c9483a', 3) + E(round(tx), -192, 3.4, 3.4, '#ff8a3a')
+    return s
+def candles():
+    s = ''
+    for x in (-110, 110): s += P(f'M{x-7},0 L{x-7},-118 L{x+7},-118 L{x+7},0Z', '#8a5a34', 4)
+    for y in (-58, -112):
+        s += P(f'M-124,{y} L124,{y} L124,{y+14} L-124,{y+14}Z', '#b0763e', 4)
+        for i in range(7):
+            x = -96 + i * 32; h = 26 + (i * 7 + int(-y)) % 14
+            s += P(f'M{x-5},{y} L{x-5},{y-h} L{x+5},{y-h} L{x+5},{y}Z', '#fff6dc', 3)
+            s += P(f'M{x},{y-h} C{x-7},{y-h-10} {x-3},{y-h-18} {x},{y-h-24} C{x+3},{y-h-18} {x+7},{y-h-10} {x},{y-h}Z', '#ffb03a', 2, '#e07a1e')
+    return s
+def boat(o):
+    s = P('M-174,-30 C-112,-46 112,-46 174,-30 C122,-14 -122,-14 -174,-30Z', '#5a3a24')
+    s += G(legs(o) + upper(o, 'f', 'stand'), -20, -8, .36) + L('M30,-70 L112,26', OLC, 13) + L('M30,-70 L112,26', '#d9b25e', 7)
+    s += P('M-174,-30 C-122,-12 122,-12 174,-30 C142,26 -142,26 -174,-30Z', '#b0763e') + L('M-150,-12 C-100,4 100,4 150,-12', sw=2.5, op=.5)
+    return s + L('M-140,-22 L-140,-112', OLC, 9) + L('M-140,-22 L-140,-112', '#8a5a34', 5) + G(lantern(), -140, -108, .62)
+def stake(): return bamboo(0, -110, 0, 10) + P('M-5,-96 L-22,-88 L-18,-72 L-5,-80Z', '#e2574a', 3)
+
+def kr_candle():
+    return L('M-16,-34 L-22,-86 M16,-34 L22,-86', '#a8703c', 3) + P('M-6,-30 L-6,-76 C-3,-80 3,-80 6,-76 L6,-30Z', '#fff6dc', 3)
+def kr_leaf():
+    s = ''
+    for i in range(-3, 4):
+        x = i * 19; ln = i * 7
+        s += P(f'M{x-13},-8 C{x-13+ln*.3:.0f},-36 {x+ln-4:.0f},-52 {x+ln},-60 C{x+ln+4:.0f},-52 {x+13+ln*.3:.0f},-36 {x+13},-8Z', '#3f8f45', 3.5)
+    s += kr_candle() + P('M-76,-8 C-76,26 76,26 76,-8 C46,8 -46,8 -76,-8Z', '#2f6f38')
+    for i in range(-4, 5):
+        x = i * 16.5; ln = i * 3.5
+        s += P(f'M{x-11:.0f},-4 C{x-11:.0f},-24 {x+ln-3:.0f},-36 {x+ln:.0f},-42 C{x+ln+3:.0f},-36 {x+11:.0f},-24 {x+11:.0f},-4Z', '#6cc05a', 3) + L(f'M{x:.0f},-6 L{x+ln*.8:.0f},-34', '#3f8f45', 1.8, .7)
+    for i in range(-5, 6): s += E(i * 13, round(8 - i * i * .28), 7.5, 6.5, '#ffb52e', 2.5)
+    for x in (-36, 36): s += G(flower('#c95be0', '#fff3b0'), x, -30, .7)
+    return s + G(flower('#ffd23e', '#ff9a2e'), 0, -24, .8)
+def kr_lotus():
+    def pet(x, h, w, c, rot): return f'<g transform="translate({x},-4) rotate({rot})">' + P(f'M0,0 C{-w},{-h*.3:.0f} {-w*.8:.0f},{-h*.8:.0f} 0,{-h} C{w*.8:.0f},{-h*.8:.0f} {w},{-h*.3:.0f} 0,0Z', c, 3.5) + L(f'M0,-6 L0,{-h*.7:.0f}', '#e0608f', 1.6, .5) + '</g>'
+    s = P('M-86,2 C-86,-16 86,-16 86,2 C86,22 -86,22 -86,2Z', '#3f8f55') + L('M-66,4 L-22,2 M66,4 L22,2 M0,16 L0,4 M-40,14 L-14,4 M40,14 L14,4', '#2f6f38', 2.5, .7)
+    for x, rot in ((-44, -40), (-22, -19), (0, 0), (22, 19), (44, 40)): s += pet(x, 72, 23, '#ff8fb8', rot)
+    s += kr_candle()
+    for x, rot in ((-56, -60), (-33, -32), (-11, -10), (11, 10), (33, 32), (56, 60)): s += pet(x, 50, 19, '#ffc4d8', rot)
+    return s + E(0, -6, 17, 8, '#ffd23e', 3)
+def kr_gold():
+    s = ''
+    for i in range(-2, 3):
+        x = i * 17; ln = i * 6
+        s += P(f'M{x-11},-34 C{x-11},-54 {x+ln-3},-66 {x+ln},-72 C{x+ln+3},-66 {x+11},-54 {x+11},-34Z', '#3f8f45', 3) + P(f'M{x+ln-5},-62 L{x+ln},-72 L{x+ln+5},-62Z', GOLD, 2)
+    s += kr_candle() + P('M-48,-36 C-30,-28 30,-28 48,-36 L46,-26 C30,-18 -30,-18 -46,-26Z', GOLD, 3)
+    for f in (-1, 1): s += L(f'M{58*f},-30 L{66*f},-74', '#8a5a34', 3) + P(f'M{66*f},-74 L{88*f},-66 L{66*f},-58Z', '#e2574a', 2.5)
+    s += P('M-80,-8 C-80,26 80,26 80,-8 C48,8 -48,8 -80,-8Z', '#2f6f38')
+    for i in range(-4, 5):
+        x = i * 17.5; ln = i * 3.5
+        s += P(f'M{x-12:.0f},-4 C{x-12:.0f},-22 {x+ln-3:.0f},-32 {x+ln:.0f},-38 C{x+ln+3:.0f},-32 {x+12:.0f},-22 {x+12:.0f},-4Z', '#58aa55', 3) + P(f'M{x+ln-5:.0f},-29 L{x+ln:.0f},-38 L{x+ln+5:.0f},-29Z', GOLD, 2)
+    for cx in (-52, 0, 52):
+        for j in range(-3, 4): s += E(cx + j * 7, round(10 + (9 - j * j) * 1.5), 4.4, 4.4, '#ffffff', 1.8)
+        s += E(cx, 28, 5, 6, '#ff8fb0', 2)
+    return s + G(flower('#ffffff', GOLD), -22, -40, .55) + G(flower('#ffffff', GOLD), 22, -40, .55)
+def kr_coco():
+    s = kr_candle() + P('M-58,-18 C-58,30 58,30 58,-18Z', '#8a5a34') + L('M-40,-2 C-36,12 -26,20 -14,24 M40,-2 C36,12 26,20 14,24 M0,6 L0,24', '#5a3a24', 2.5, .6)
+    s += E(0, -18, 58, 13, '#fff6e8', 3.5) + E(0, -17, 46, 9, '#f2e2c0')
+    for x, c in ((-32, '#ff8fb0'), (32, '#c95be0')): s += G(flower(c, '#fff3b0'), x, -24, .6)
+    return s + G(flower('#ffd23e', '#ff9a2e'), 0, -20, .6)
+
+def it_lantern(): return L('M0,-18 L22,-32', '#8a5a34', 5) + lantern()
+
+# ================================================================ ส่งออก
+ASSETS = {}
+def add(name, inner, x0, y0, w, h, s):
+    ASSETS[name] = dict(svg=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x0} {y0} {w} {h}" width="{w}" height="{h}">{DEFS}{inner}</svg>', ax=-x0, ay=-y0, w=w, h=h, s=s)
+CS = .40
+for i, o in enumerate(CAST):
+    for wk in (0, 1, 2): add(f'c{i}_legs{wk}', legs(o, wk), -60, -50, 120, 60, CS)
+    poses = (('f', 'stand'), ('f', 'hold'), ('f', 'up'), ('f', 'wai'), ('f', 'eat'), ('s', 'stand'), ('s', 'hold'), ('b', 'stand'), ('b', 'hold'))
+    for v, p in poses:
+        ex = {'up': 'laugh', 'wai': 'pray', 'eat': 'eat'}.get(p)
+        if o.get('monk') and p in ('up', 'eat'): continue
+        add(f'c{i}_{v}_{p}', upper(o, v, p, ex), -170, -350, 340, 356, CS)
+add('stall_back', stall_back(), -250, -270, 500, 280, .62)
+for k in ('kanom', 'krathong', 'drink', 'lantern'): add(f'stall_{k}', stall_front(k), -250, -366, 500, 376, .62)
+add('lot', lot_empty(), -190, -164, 380, 174, .62)
+add('tree1', tree_big(3), -280, -540, 560, 560, .7); add('tree2', tree_big(8), -280, -540, 560, 560, .55)
+add('palm', palm(), -180, -460, 380, 470, .8); add('banana', banana(), -180, -280, 360, 290, .62)
+add('lamp', lamp_pole(), -20, -270, 110, 280, .62); add('torch', torch(), -30, -240, 60, 246, .5)
+add('jar', jar(), -70, -112, 140, 122, .5); add('sign', signpost(), -160, -250, 320, 256, .7)
+add('gate', gate(), -220, -420, 440, 430, .8); add('fence', fence(), -165, -62, 330, 68, .62)
+add('lantern', lantern(), -32, -24, 64, 106, .6)
+add('fw_base', fw_base(), -236, -400, 472, 410, .6); add('fw_wheel', fw_wheel(), -330, -330, 660, 660, .6)
+for i, c in enumerate(('#e2574a', '#7c6cf0', '#3f8f55', '#f08aa8')): add(f'fw_cab{i}', fw_cab(c), -52, -8, 104, 112, .6)
+add('car_base', car_base(), -250, -320, 500, 374, .6); add('car_top', car_top(), -260, -460, 520, 266, .6)
+for i, (c, m) in enumerate((('#fff6e8', '#ff8fab'), ('#c9965a', '#5a3a24'), ('#ffc4d6', '#fff6e8'))): add(f'horse{i}', horse(c, m), -100, -204, 220, 254, .5)
+add('bounce_back', bounce_back(), -270, -384, 540, 392, .6); add('bounce_front', bounce_front(), -270, -200, 540, 220, .6)
+add('it_lantern', it_lantern(), -34, -40, 72, 124, .45)
+for k, f in (('leaf', kr_leaf), ('lotus', kr_lotus), ('gold', kr_gold), ('coco', kr_coco)): add('kr_' + k, f(), -94, -96, 188, 132, .5)
+add('sala', sala(), -236, -410, 472, 420, .62); add('urn', urn(), -80, -204, 160, 212, .62); add('candles', candles(), -132, -160, 264, 168, .62)
+add('boat0', boat(CAST[2]), -186, -160, 372, 200, .5); add('boat1', boat(CAST[7]), -186, -160, 372, 200, .5); add('stake', stake(), -30, -118, 60, 124, .6)
+add('it_kanom', it_kanom(), -36, -20, 72, 42, .5); add('it_drink', it_drink(), -20, -52, 40, 66, .5)
+add('it_krathong', krathong(False), -60, -80, 120, 100, .32); add('it_krathong_lit', krathong(True, False), -60, -80, 120, 100, .32)
+META = dict(cast=[dict(name=o['name'], monk=bool(o.get('monk')), vendor=bool(o.get('vendor')), long=o.get('bottom') in ('nung', 'monk')) for o in CAST], cs=CS)
+root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+with io.open(os.path.join(root, 'assets.js'), 'w', encoding='utf-8', newline='\n') as f:
+    f.write('// สร้างอัตโนมัติจาก tools/gen_assets.py — อย่าแก้ไฟล์นี้ตรง ๆ\n')
+    f.write('const ASSETS = ' + json.dumps(ASSETS, ensure_ascii=False) + ';\n')
+    f.write('const META = ' + json.dumps(META, ensure_ascii=False) + ';\n')
+print(len(ASSETS), 'sprites', os.path.getsize(os.path.join(root, 'assets.js')) // 1024, 'KB')

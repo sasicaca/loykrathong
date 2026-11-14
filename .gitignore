@@ -1,0 +1,17 @@
+# ความลับ ห้ามขึ้น GitHub
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+credentials*
+secrets*
+
+# ของในเครื่อง
+.claude/settings.local.json
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
